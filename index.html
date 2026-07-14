@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PMU SCRAPER</title>
@@ -50,8 +49,12 @@ input[type="date"]{background:var(--bg);border:1px solid var(--bor);border-radiu
   <div class="section">
     <div class="row">
       <div>
-        <label>Date à récupérer</label>
-        <input type="date" id="dateInput">
+        <label>Du</label>
+        <input type="date" id="dateStart">
+      </div>
+      <div>
+        <label>Au</label>
+        <input type="date" id="dateEnd">
       </div>
       <button class="btn" id="fetchBtn" onclick="startScrape()">▶ RÉCUPÉRER</button>
     </div>
@@ -62,6 +65,7 @@ input[type="date"]{background:var(--bg);border:1px solid var(--bor);border-radiu
       <button class="btn-secondary" style="color:var(--grn);border-color:rgba(0,232,122,0.4)" onclick="downloadResult()">⬇️ TÉLÉCHARGER (compatible IMPORTER)</button>
     </div>
     <div class="note">
+      Astuce : mets la même date des deux côtés pour un seul jour, ou une plage large pour rattraper plusieurs semaines/mois d'un coup. Sur une grosse plage, ça peut prendre plusieurs minutes — ne quitte pas la page pendant que ça tourne.<br><br>
       Passe par une fonction serveur hébergée sur ton propre Vercel (<code>/api/pmu-proxy</code>) pour contourner le blocage CORS du navigateur — l'API PMU elle-même est publique et sans authentification. Plus de dépendance à un proxy tiers.<br><br>
       Une fois le fichier téléchargé, utilise le bouton <strong>⬆️ IMPORTER</strong> dans PCM-PRO-YAMCHA-ANALYSTE pour l'ajouter à ta base — il fusionnera automatiquement avec ce que tu as déjà, sans doublons.
     </div>
@@ -69,7 +73,8 @@ input[type="date"]{background:var(--bg);border:1px solid var(--bor);border-radiu
 </div>
 
 <script>
-document.getElementById('dateInput').valueAsDate = new Date();
+document.getElementById('dateStart').valueAsDate = new Date();
+document.getElementById('dateEnd').valueAsDate = new Date();
 
 // Passe par notre propre fonction serveur Vercel (/api/pmu-proxy) plutôt que
 // par un proxy CORS public tiers (peu fiable, souvent limité aux domaines
@@ -111,15 +116,99 @@ function titleCase(s){
 function pad2(n){ return String(n).padStart(2,'0'); }
 
 let finalResult = { att: {}, mon: {} };
-let dateUsedForFile = '';
+let fileLabel = '';
+
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+function dateStrToParts(dateStr){ // YYYY-MM-DD -> {pmuDate, dateFR}
+  const [y,m,d] = dateStr.split('-');
+  return { pmuDate: d + m + y, dateFR: d + '/' + m + '/' + y };
+}
+
+// Récupère et intègre les données d'UNE journée dans finalResult (partagé).
+// Retourne le nombre de performances ajoutées pour cette journée.
+async function scrapeOneDay(pmuDate, dateFR){
+  const prog = await fetchJson('/rest/client/7/programme/' + pmuDate);
+  const reunions = (prog.programme && prog.programme.reunions) || [];
+
+  const trotCourses = [];
+  reunions.forEach(reu => {
+    const hippo = reu.hippodrome.libelleCourt;
+    (reu.courses||[]).forEach(c => {
+      if(c.discipline === 'ATTELE' || c.discipline === 'MONTE'){
+        trotCourses.push({
+          numReunion: reu.numOfficiel, numCourse: c.numOrdre,
+          hippo, dist: c.distance, alloc: c.montantPrix,
+          disc: c.discipline === 'ATTELE' ? 'att' : 'mon',
+          mode: c.categorieParticularite === 'AUTOSTART' ? 'A' : 'V',
+          statut: c.statut
+        });
+      }
+    });
+  });
+
+  let coursesAdded = 0, racesSkipped = 0;
+  for(const c of trotCourses){
+    if(c.statut !== 'ARRIVEE_DEFINITIVE_COMPLETE' && c.statut !== 'FIN_COURSE'){
+      racesSkipped++;
+      continue;
+    }
+    try {
+      const partUrl = '/rest/client/7/programme/' + pmuDate + '/R' + c.numReunion + '/C' + c.numCourse + '/participants';
+      const partData = await fetchJson(partUrl);
+      const participants = partData.participants || [];
+
+      participants.forEach(p => {
+        if(p.statut !== 'PARTANT') return;
+        if(!p.ordreArrivee || p.ordreArrivee < 1 || p.ordreArrivee > 7) return;
+        if(!p.reductionKilometrique) return;
+        const rk = Math.round((p.reductionKilometrique/1000)*10)/10;
+        const age = p.age != null ? (p.age >= 5 ? '5+' : String(p.age)) : null;
+        const hippo = titleCase(c.hippo);
+        const key = [hippo, c.dist, c.mode, age, c.alloc].join('|');
+        if(!finalResult[c.disc][key]){
+          finalResult[c.disc][key] = {
+            hippo, dist: c.dist, mode: c.mode, age, alloc: c.alloc, disc: c.disc,
+            courses: [], tranches: [], moyenne: null
+          };
+        }
+        // Anti-doublon : même cheval, même date déjà présent dans ce groupe
+        const dup = finalResult[c.disc][key].courses.some(x => x.date===dateFR && x.cheval===titleCase(p.nom));
+        if(!dup){
+          finalResult[c.disc][key].courses.push({
+            date: dateFR, cheval: titleCase(p.nom), rang: p.ordreArrivee,
+            rk, ferrure: mapFerrure(p.deferre), age
+          });
+          coursesAdded++;
+        }
+      });
+      await sleep(120); // ménage l'API PMU sur les grosses plages de dates
+    } catch(e){
+      log('⚠️ Échec R' + c.numReunion + 'C' + c.numCourse + ' (' + c.hippo + ', ' + dateFR + ') : ' + e.message);
+    }
+  }
+  return { coursesAdded, racesSkipped, nbCourses: trotCourses.length };
+}
+
+function daysBetween(startStr, endStr){
+  const out = [];
+  let cur = new Date(startStr + 'T00:00:00');
+  const end = new Date(endStr + 'T00:00:00');
+  while(cur <= end){
+    out.push(cur.toISOString().slice(0,10));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
 
 async function startScrape(){
-  const dateInput = document.getElementById('dateInput').value; // YYYY-MM-DD
-  if(!dateInput){ alert('Choisis une date.'); return; }
-  const [y,m,d] = dateInput.split('-');
-  const pmuDate = d + m + y; // DDMMYYYY
-  const dateFR = d + '/' + m + '/' + y;
-  dateUsedForFile = y + '-' + m + '-' + d;
+  const startStr = document.getElementById('dateStart').value;
+  const endStr = document.getElementById('dateEnd').value;
+  if(!startStr || !endStr){ alert('Choisis les deux dates.'); return; }
+  if(startStr > endStr){ alert('La date de début doit être avant la date de fin.'); return; }
+
+  const days = daysBetween(startStr, endStr);
+  fileLabel = startStr === endStr ? startStr : (startStr + '_a_' + endStr);
 
   document.getElementById('fetchBtn').disabled = true;
   document.getElementById('progress').textContent = '';
@@ -127,92 +216,47 @@ async function startScrape(){
   document.getElementById('actions').style.display = 'none';
   finalResult = { att: {}, mon: {} };
 
-  try {
-    log('Récupération du programme du ' + dateFR + '...');
-    const prog = await fetchJson('/rest/client/7/programme/' + pmuDate);
-    const reunions = prog.programme.reunions;
-    log('✓ ' + reunions.length + ' réunions trouvées.');
+  log(days.length > 1 ? ('Récupération de ' + days.length + ' jours (' + startStr + ' → ' + endStr + ')...') : 'Récupération du ' + days.length + ' jour...');
 
-    // Ne garder que les réunions françaises de trot (pas de galop, pas d'étranger si tu veux filtrer)
-    const trotCourses = [];
-    reunions.forEach(reu => {
-      const hippo = reu.hippodrome.libelleCourt;
-      (reu.courses||[]).forEach(c => {
-        if(c.discipline === 'ATTELE' || c.discipline === 'MONTE'){
-          trotCourses.push({
-            numReunion: reu.numOfficiel, numCourse: c.numOrdre,
-            hippo, dist: c.distance, alloc: c.montantPrix,
-            disc: c.discipline === 'ATTELE' ? 'att' : 'mon',
-            mode: c.categorieParticularite === 'AUTOSTART' ? 'A' : 'V',
-            statut: c.statut
-          });
-        }
-      });
-    });
-    log('✓ ' + trotCourses.length + ' courses de trot à traiter.');
-    if(!trotCourses.length){ log('Aucune course de trot ce jour-là.'); document.getElementById('fetchBtn').disabled = false; return; }
-
-    let coursesAdded = 0, racesSkipped = 0;
-    for(let i = 0; i < trotCourses.length; i++){
-      const c = trotCourses[i];
-      setProgress(Math.round((i/trotCourses.length)*100));
-      if(c.statut !== 'ARRIVEE_DEFINITIVE_COMPLETE' && c.statut !== 'FIN_COURSE'){
-        racesSkipped++;
-        continue; // course pas encore courue
-      }
-      try {
-        const partUrl = '/rest/client/7/programme/' + pmuDate + '/R' + c.numReunion + '/C' + c.numCourse + '/participants';
-        const partData = await fetchJson(partUrl);
-        const participants = partData.participants || [];
-
-        participants.forEach(p => {
-          if(p.statut !== 'PARTANT') return;
-          if(!p.ordreArrivee || p.ordreArrivee < 1 || p.ordreArrivee > 7) return;
-          if(!p.reductionKilometrique) return;
-          const rk = Math.round((p.reductionKilometrique/1000)*10)/10;
-          const age = p.age != null ? (p.age >= 5 ? '5+' : String(p.age)) : null;
-          const hippo = titleCase(c.hippo);
-          const key = [hippo, c.dist, c.mode, age, c.alloc].join('|');
-          if(!finalResult[c.disc][key]){
-            finalResult[c.disc][key] = {
-              hippo, dist: c.dist, mode: c.mode, age, alloc: c.alloc, disc: c.disc,
-              courses: [], tranches: [], moyenne: null
-            };
-          }
-          finalResult[c.disc][key].courses.push({
-            date: dateFR, cheval: titleCase(p.nom), rang: p.ordreArrivee,
-            rk, ferrure: mapFerrure(p.deferre), age
-          });
-          coursesAdded++;
-        });
-      } catch(e){
-        log('⚠️ Échec R' + c.numReunion + 'C' + c.numCourse + ' (' + c.hippo + ') : ' + e.message);
-      }
+  let totalAdded = 0, totalSkipped = 0;
+  for(let i = 0; i < days.length; i++){
+    const { pmuDate, dateFR } = dateStrToParts(days[i]);
+    setProgress(Math.round((i/days.length)*100));
+    try {
+      const res = await scrapeOneDay(pmuDate, dateFR);
+      totalAdded += res.coursesAdded;
+      totalSkipped += res.racesSkipped;
+      log('✓ ' + dateFR + ' — ' + res.nbCourses + ' courses trot, ' + res.coursesAdded + ' performances ajoutées' + (res.racesSkipped ? ' (' + res.racesSkipped + ' pas encore courues)' : ''));
+    } catch(e){
+      log('❌ ' + dateFR + ' — erreur : ' + e.message);
     }
-    setProgress(100);
-    log('✓ Terminé. ' + coursesAdded + ' performances collectées (' + racesSkipped + ' courses pas encore courues ignorées).');
-
-    const nbAtt = Object.keys(finalResult.att).length;
-    const nbMon = Object.keys(finalResult.mon).length;
-    document.getElementById('stats').innerHTML = `
-      <div class="stat-pill">Groupes Attelé <strong>${nbAtt}</strong></div>
-      <div class="stat-pill">Groupes Monté <strong>${nbMon}</strong></div>
-      <div class="stat-pill">Performances <strong>${coursesAdded}</strong></div>
-    `;
-    if(coursesAdded > 0) document.getElementById('actions').style.display = 'flex';
-  } catch(e){
-    log('❌ Erreur : ' + e.message);
-    console.error(e);
+    // Sauvegarde intermédiaire tous les 30 jours traités, pour ne rien perdre
+    // si le téléphone met la page en veille ou si la connexion coupe en cours de route.
+    if((i+1) % 30 === 0 && i < days.length - 1){
+      log('💾 Sauvegarde intermédiaire (' + (i+1) + '/' + days.length + ' jours traités)...');
+      downloadResult(true);
+    }
   }
+  setProgress(100);
+  log('— Terminé —');
+
+  const nbAtt = Object.keys(finalResult.att).length;
+  const nbMon = Object.keys(finalResult.mon).length;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-pill">Groupes Attelé <strong>${nbAtt}</strong></div>
+    <div class="stat-pill">Groupes Monté <strong>${nbMon}</strong></div>
+    <div class="stat-pill">Performances <strong>${totalAdded}</strong></div>
+  `;
+  if(totalAdded > 0) document.getElementById('actions').style.display = 'flex';
   document.getElementById('fetchBtn').disabled = false;
 }
 
-function downloadResult(){
+function downloadResult(partial){
   const blob = new Blob([JSON.stringify(finalResult, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'rk-base-pmu-' + dateUsedForFile + '.json';
+  a.download = 'rk-base-pmu-' + fileLabel + (partial ? '-partiel' : '') + '.json';
   a.click();
   URL.revokeObjectURL(url);
 }
