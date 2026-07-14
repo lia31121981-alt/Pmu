@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PMU SCRAPER</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080c10;--sur:#0e1419;--sur2:#141c24;--bor:#1e2d3d;
+  --acc:#00d4ff;--acc2:#0088aa;--grn:#00e87a;--red:#ff4455;--org:#ff8c00;
+  --txt:#c8d8e8;--mut:#506070;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--txt);font-family:'IBM Plex Sans',sans-serif;min-height:100dvh;}
+.wrap{max-width:720px;margin:0 auto;padding:1rem;}
+header{text-align:center;padding:1rem 0;border-bottom:1px solid var(--bor);margin-bottom:1rem;}
+header .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:0.55rem;letter-spacing:4px;color:var(--acc);text-transform:uppercase;}
+header h1{font-family:'Bebas Neue',sans-serif;font-size:2.4rem;letter-spacing:6px;color:#fff;}
+header h1 span{color:var(--acc);}
+header .sub{font-family:'IBM Plex Mono',monospace;font-size:0.58rem;color:var(--mut);margin-top:0.3rem;}
+.section{background:var(--sur);border:1px solid var(--bor);border-radius:6px;padding:1rem;margin-bottom:1rem;}
+label{font-family:'IBM Plex Mono',monospace;font-size:0.55rem;letter-spacing:2px;color:var(--mut);text-transform:uppercase;display:block;margin-bottom:0.3rem;}
+input[type="date"]{background:var(--bg);border:1px solid var(--bor);border-radius:4px;color:var(--txt);font-family:'IBM Plex Mono',monospace;font-size:0.85rem;padding:0.5rem;width:100%;}
+.row{display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;}
+.row>div{flex:1;min-width:140px;}
+.btn{background:var(--acc);color:#001820;border:none;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:0.65rem 1.1rem;cursor:pointer;}
+.btn:disabled{opacity:0.4;cursor:not-allowed;}
+.btn-secondary{background:var(--sur2);color:var(--txt);border:1px solid var(--bor);border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:0.62rem;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:0.55rem 0.9rem;cursor:pointer;}
+#progress{font-family:'IBM Plex Mono',monospace;font-size:0.62rem;color:var(--mut);margin-top:0.7rem;white-space:pre-wrap;max-height:240px;overflow-y:auto;background:var(--bg);border:1px solid var(--bor);border-radius:4px;padding:0.6rem;display:none;}
+.progress-bar{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:0.6rem;display:none;}
+.progress-fill{height:100%;background:var(--acc);width:0%;transition:width 0.2s;}
+.stats{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.8rem;}
+.stat-pill{font-family:'IBM Plex Mono',monospace;font-size:0.58rem;color:var(--mut);background:var(--bg);border:1px solid var(--bor);border-radius:20px;padding:0.25rem 0.7rem;}
+.stat-pill strong{color:var(--grn);}
+.actions{display:flex;gap:0.6rem;margin-top:0.8rem;flex-wrap:wrap;}
+.err{color:var(--red);}
+.note{font-family:'IBM Plex Mono',monospace;font-size:0.58rem;color:var(--mut);margin-top:0.6rem;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Trot Français · Collecte Automatique</div>
+    <h1>PMU <span>SCRAPER</span></h1>
+    <div class="sub">Alimente automatiquement ta base RK depuis l'API PMU officielle</div>
+  </header>
+
+  <div class="section">
+    <div class="row">
+      <div>
+        <label>Date à récupérer</label>
+        <input type="date" id="dateInput">
+      </div>
+      <button class="btn" id="fetchBtn" onclick="startScrape()">▶ RÉCUPÉRER</button>
+    </div>
+    <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+    <div id="progress"></div>
+    <div class="stats" id="stats"></div>
+    <div class="actions" id="actions" style="display:none">
+      <button class="btn-secondary" style="color:var(--grn);border-color:rgba(0,232,122,0.4)" onclick="downloadResult()">⬇️ TÉLÉCHARGER (compatible IMPORTER)</button>
+    </div>
+    <div class="note">
+      Passe par une fonction serveur hébergée sur ton propre Vercel (<code>/api/pmu-proxy</code>) pour contourner le blocage CORS du navigateur — l'API PMU elle-même est publique et sans authentification. Plus de dépendance à un proxy tiers.<br><br>
+      Une fois le fichier téléchargé, utilise le bouton <strong>⬆️ IMPORTER</strong> dans PCM-PRO-YAMCHA-ANALYSTE pour l'ajouter à ta base — il fusionnera automatiquement avec ce que tu as déjà, sans doublons.
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('dateInput').valueAsDate = new Date();
+
+// Passe par notre propre fonction serveur Vercel (/api/pmu-proxy) plutôt que
+// par un proxy CORS public tiers (peu fiable, souvent limité aux domaines
+// de développement). "path" doit commencer par /rest/client/7/programme/...
+async function fetchJson(pmuPath){
+  const res = await fetch('/api/pmu-proxy?path=' + encodeURIComponent(pmuPath));
+  if(!res.ok){
+    let msg = 'HTTP ' + res.status;
+    try { const err = await res.json(); if(err.error) msg = err.error; } catch(e){}
+    throw new Error(msg);
+  }
+  return await res.json();
+}
+
+function log(msg){
+  const el = document.getElementById('progress');
+  el.style.display = 'block';
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function setProgress(pct){
+  document.getElementById('progressBar').style.display = 'block';
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+// ===== Mapping PMU -> format RK base (identique à PCM-PRO-YAMCHA-ANALYSTE) =====
+function mapFerrure(deferre){
+  if(!deferre) return 'FERRÉ';
+  if(deferre.includes('ANTERIEURS_POSTERIEURS')) return 'D4';
+  if(deferre.includes('POSTERIEURS')) return 'DP';
+  if(deferre.includes('ANTERIEURS')) return 'DA';
+  if(deferre.includes('PROTEGE')) return 'DA/PP';
+  return 'FERRÉ';
+}
+function titleCase(s){
+  return s.toLowerCase().replace(/(^|[\s\-'])(\S)/g, (m,sep,c)=>sep+c.toUpperCase());
+}
+function pad2(n){ return String(n).padStart(2,'0'); }
+
+let finalResult = { att: {}, mon: {} };
+let dateUsedForFile = '';
+
+async function startScrape(){
+  const dateInput = document.getElementById('dateInput').value; // YYYY-MM-DD
+  if(!dateInput){ alert('Choisis une date.'); return; }
+  const [y,m,d] = dateInput.split('-');
+  const pmuDate = d + m + y; // DDMMYYYY
+  const dateFR = d + '/' + m + '/' + y;
+  dateUsedForFile = y + '-' + m + '-' + d;
+
+  document.getElementById('fetchBtn').disabled = true;
+  document.getElementById('progress').textContent = '';
+  document.getElementById('stats').innerHTML = '';
+  document.getElementById('actions').style.display = 'none';
+  finalResult = { att: {}, mon: {} };
+
+  try {
+    log('Récupération du programme du ' + dateFR + '...');
+    const prog = await fetchJson('/rest/client/7/programme/' + pmuDate);
+    const reunions = prog.programme.reunions;
+    log('✓ ' + reunions.length + ' réunions trouvées.');
+
+    // Ne garder que les réunions françaises de trot (pas de galop, pas d'étranger si tu veux filtrer)
+    const trotCourses = [];
+    reunions.forEach(reu => {
+      const hippo = reu.hippodrome.libelleCourt;
+      (reu.courses||[]).forEach(c => {
+        if(c.discipline === 'ATTELE' || c.discipline === 'MONTE'){
+          trotCourses.push({
+            numReunion: reu.numOfficiel, numCourse: c.numOrdre,
+            hippo, dist: c.distance, alloc: c.montantPrix,
+            disc: c.discipline === 'ATTELE' ? 'att' : 'mon',
+            mode: c.categorieParticularite === 'AUTOSTART' ? 'A' : 'V',
+            statut: c.statut
+          });
+        }
+      });
+    });
+    log('✓ ' + trotCourses.length + ' courses de trot à traiter.');
+    if(!trotCourses.length){ log('Aucune course de trot ce jour-là.'); document.getElementById('fetchBtn').disabled = false; return; }
+
+    let coursesAdded = 0, racesSkipped = 0;
+    for(let i = 0; i < trotCourses.length; i++){
+      const c = trotCourses[i];
+      setProgress(Math.round((i/trotCourses.length)*100));
+      if(c.statut !== 'ARRIVEE_DEFINITIVE_COMPLETE' && c.statut !== 'FIN_COURSE'){
+        racesSkipped++;
+        continue; // course pas encore courue
+      }
+      try {
+        const partUrl = '/rest/client/7/programme/' + pmuDate + '/R' + c.numReunion + '/C' + c.numCourse + '/participants';
+        const partData = await fetchJson(partUrl);
+        const participants = partData.participants || [];
+
+        participants.forEach(p => {
+          if(p.statut !== 'PARTANT') return;
+          if(!p.ordreArrivee || p.ordreArrivee < 1 || p.ordreArrivee > 7) return;
+          if(!p.reductionKilometrique) return;
+          const rk = Math.round((p.reductionKilometrique/1000)*10)/10;
+          const age = p.age != null ? (p.age >= 5 ? '5+' : String(p.age)) : null;
+          const hippo = titleCase(c.hippo);
+          const key = [hippo, c.dist, c.mode, age, c.alloc].join('|');
+          if(!finalResult[c.disc][key]){
+            finalResult[c.disc][key] = {
+              hippo, dist: c.dist, mode: c.mode, age, alloc: c.alloc, disc: c.disc,
+              courses: [], tranches: [], moyenne: null
+            };
+          }
+          finalResult[c.disc][key].courses.push({
+            date: dateFR, cheval: titleCase(p.nom), rang: p.ordreArrivee,
+            rk, ferrure: mapFerrure(p.deferre), age
+          });
+          coursesAdded++;
+        });
+      } catch(e){
+        log('⚠️ Échec R' + c.numReunion + 'C' + c.numCourse + ' (' + c.hippo + ') : ' + e.message);
+      }
+    }
+    setProgress(100);
+    log('✓ Terminé. ' + coursesAdded + ' performances collectées (' + racesSkipped + ' courses pas encore courues ignorées).');
+
+    const nbAtt = Object.keys(finalResult.att).length;
+    const nbMon = Object.keys(finalResult.mon).length;
+    document.getElementById('stats').innerHTML = `
+      <div class="stat-pill">Groupes Attelé <strong>${nbAtt}</strong></div>
+      <div class="stat-pill">Groupes Monté <strong>${nbMon}</strong></div>
+      <div class="stat-pill">Performances <strong>${coursesAdded}</strong></div>
+    `;
+    if(coursesAdded > 0) document.getElementById('actions').style.display = 'flex';
+  } catch(e){
+    log('❌ Erreur : ' + e.message);
+    console.error(e);
+  }
+  document.getElementById('fetchBtn').disabled = false;
+}
+
+function downloadResult(){
+  const blob = new Blob([JSON.stringify(finalResult, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'rk-base-pmu-' + dateUsedForFile + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
