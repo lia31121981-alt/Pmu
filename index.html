@@ -192,11 +192,11 @@ async function scrapeOneDay(pmuDate, dateFR){
 
 function daysBetween(startStr, endStr){
   const out = [];
-  let cur = new Date(startStr + 'T00:00:00');
-  const end = new Date(endStr + 'T00:00:00');
+  let cur = new Date(startStr + 'T00:00:00Z');
+  const end = new Date(endStr + 'T00:00:00Z');
   while(cur <= end){
     out.push(cur.toISOString().slice(0,10));
-    cur.setDate(cur.getDate() + 1);
+    cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return out;
 }
