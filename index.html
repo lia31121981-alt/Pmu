@@ -131,9 +131,20 @@ async function scrapeOneDay(pmuDate, dateFR){
   const prog = await fetchJson('/rest/client/7/programme/' + pmuDate);
   const reunions = (prog.programme && prog.programme.reunions) || [];
 
+  // Diagnostic : lister toutes les réunions du jour (utile pour debug)
+  log('  Réunions du ' + dateFR + ' : ' + reunions.map(r => 'R'+r.numOfficiel+' '+(r.hippodrome?r.hippodrome.libelleCourt:'?')).join(' · '));
+
   const trotCourses = [];
   reunions.forEach(reu => {
     const hippo = reu.hippodrome.libelleCourt;
+    // Diagnostic ciblé : si l'hippodrome contient "toulouse", on affiche le
+    // détail brut de chaque course pour voir exactement ce que PMU renvoie
+    // (discipline, statut) même si elle n'est pas retenue comme trot.
+    if(/toulouse/i.test(hippo)){
+      (reu.courses||[]).forEach(c => {
+        log('  🔍 ' + hippo + ' R'+reu.numOfficiel+'C'+c.numOrdre + ' — discipline=' + c.discipline + ' statut=' + c.statut + ' categorieParticularite=' + c.categorieParticularite);
+      });
+    }
     (reu.courses||[]).forEach(c => {
       if(c.discipline === 'ATTELE' || c.discipline === 'MONTE'){
         trotCourses.push({
@@ -149,14 +160,23 @@ async function scrapeOneDay(pmuDate, dateFR){
 
   let coursesAdded = 0, racesSkipped = 0;
   for(const c of trotCourses){
-    if(c.statut !== 'ARRIVEE_DEFINITIVE_COMPLETE' && c.statut !== 'FIN_COURSE'){
-      racesSkipped++;
-      continue;
-    }
     try {
       const partUrl = '/rest/client/7/programme/' + pmuDate + '/R' + c.numReunion + '/C' + c.numCourse + '/participants';
       const partData = await fetchJson(partUrl);
       const participants = partData.participants || [];
+
+      // On ne se fie plus au champ "statut" de la course (formulations
+      // multiples selon les hippodromes/allocations, qui faisaient ignorer
+      // à tort des courses pourtant bien terminées). On regarde directement
+      // si des arrivées existent réellement dans les participants.
+      const hasArrivals = participants.some(p => p.ordreArrivee && p.reductionKilometrique);
+      if(/toulouse/i.test(c.hippo)){
+        log('  🔍 Participants ' + c.hippo + ' R'+c.numReunion+'C'+c.numCourse + ' : ' + participants.length + ' chevaux, hasArrivals=' + hasArrivals + (participants[0] ? (' · ex: statut='+participants[0].statut+' ordreArrivee='+participants[0].ordreArrivee+' RK='+participants[0].reductionKilometrique) : ''));
+      }
+      if(!hasArrivals){
+        racesSkipped++;
+        continue;
+      }
 
       participants.forEach(p => {
         if(p.statut !== 'PARTANT') return;
@@ -210,6 +230,16 @@ async function startScrape(){
   const days = daysBetween(startStr, endStr);
   fileLabel = startStr === endStr ? startStr : (startStr + '_a_' + endStr);
 
+  // Empêche l'écran de se verrouiller automatiquement pendant la récupération
+  // (si le navigateur le permet). Si l'API n'existe pas, on continue sans.
+  let wakeLock = null;
+  try {
+    if('wakeLock' in navigator){
+      wakeLock = await navigator.wakeLock.request('screen');
+      log('🔓 Écran maintenu allumé pendant la récupération.');
+    }
+  } catch(e) { /* refusé ou indisponible, tant pis, on continue quand même */ }
+
   document.getElementById('fetchBtn').disabled = true;
   document.getElementById('progress').textContent = '';
   document.getElementById('stats').innerHTML = '';
@@ -237,6 +267,7 @@ async function startScrape(){
       downloadResult(true);
     }
   }
+  if(wakeLock){ try { await wakeLock.release(); } catch(e){} }
   setProgress(100);
   log('— Terminé —');
 
