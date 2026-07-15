@@ -115,16 +115,49 @@ function titleCase(s){
 }
 function pad2(n){ return String(n).padStart(2,'0'); }
 
-// PMU nomme certains hippodromes par le nom exact du site (pas la ville),
-// ce qui ne correspond pas aux noms utilisés ailleurs dans tes outils
-// (LeTrot, PCM-PRO-YAMCHA-ANALYSTE...). On les réaligne ici.
-// Ajoute une ligne ici si tu repères un autre hippodrome dans le même cas.
-const HIPPO_RENAME = {
-  'La Cepiere': 'Toulouse'
-};
+// Normalisation d'hippodrome IDENTIQUE à celle utilisée dans
+// PCM-PRO-YAMCHA-ANALYSTE (normHippoRKA) pour le calcul PCM. Si les deux
+// ne correspondent pas mot pour mot, les courses deviennent invisibles
+// pour le calcul même si elles existent bien dans la base (bug vécu avec
+// Enghien, Cagnes Sur Mer, Lyon Parilly, etc. — jamais retrouvées par le
+// moteur de calcul car stockées sous un nom légèrement différent).
 function resolveHippoName(raw){
-  const tc = titleCase(raw);
-  return HIPPO_RENAME[tc] || tc;
+  if(!raw) return null;
+  if(/vincenn/i.test(raw)) return 'Vincennes';
+  if(/enghien|soisy/i.test(raw)) return 'Enghien Soisy';
+  if(/marseille.*borel/i.test(raw)) return 'Marseille Borely';
+  if(/marseille.*vivaux/i.test(raw)) return 'Marseille Vivaux';
+  if(/lyon.*soie/i.test(raw)) return 'Lyon La Soie';
+  if(/lyon.*parilly/i.test(raw)) return 'Lyon Parilly';
+  if(/beaumont/i.test(raw)) return 'Beaumont De Lomagne';
+  if(/castera/i.test(raw)) return 'Castera Verduzan';
+  if(/croise.*laroche|croisé.*laroche/i.test(raw)) return 'Le Croise Laroche';
+  if(/mont.*michel/i.test(raw)) return 'Le Mont Saint Michel';
+  if(/sables.*olonne/i.test(raw)) return "Les Sables D'Olonne";
+  if(/saint.*brieuc/i.test(raw)) return 'Saint Brieuc';
+  if(/saint.*galmier/i.test(raw)) return 'Saint Galmier';
+  if(/saint.*malo/i.test(raw)) return 'Saint Malo';
+  if(/saint.*omer|st.*omer/i.test(raw)) return 'Saint Omer';
+  if(/salon/i.test(raw)) return 'Salon De Provence';
+  if(/grenade/i.test(raw)) return 'Grenade Sur Garonne';
+  if(/le mans/i.test(raw)) return 'Le Mans';
+  if(/la capelle/i.test(raw)) return 'La Capelle';
+  if(/la rochelle/i.test(raw)) return 'La Rochelle';
+  if(/pontchateau/i.test(raw)) return 'Pontchateau';
+  if(/cagnes/i.test(raw)) return 'Cagnes Sur Mer';
+  if(/meslay/i.test(raw)) return 'Meslay Du Maine';
+  if(/maure.*bretagne/i.test(raw)) return 'Maure De Bretagne';
+  if(/paray/i.test(raw)) return 'Paray Le Monial';
+  if(/mauquenchy/i.test(raw)) return 'Mauquenchy';
+  if(/pornichet|baule/i.test(raw)) return 'Pornichet La Baule';
+  if(/langan|libourne/i.test(raw)) return 'Langan Libourne';
+  if(/bordeaux|bouscat/i.test(raw)) return 'Bordeaux Le Bouscat';
+  if(/divonne/i.test(raw)) return 'Divonne Les Bains';
+  if(/machecoul/i.test(raw)) return 'Machecoul';
+  if(/graignes/i.test(raw)) return 'Graignes';
+  if(/\bcaen\b/i.test(raw)) return 'Caen';
+  if(/toulouse|cepiere|c[eé]piere/i.test(raw)) return 'Toulouse';
+  return titleCase(raw);
 }
 
 let finalResult = { att: {}, mon: {} };
