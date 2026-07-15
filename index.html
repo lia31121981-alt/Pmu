@@ -115,6 +115,18 @@ function titleCase(s){
 }
 function pad2(n){ return String(n).padStart(2,'0'); }
 
+// PMU nomme certains hippodromes par le nom exact du site (pas la ville),
+// ce qui ne correspond pas aux noms utilisés ailleurs dans tes outils
+// (LeTrot, PCM-PRO-YAMCHA-ANALYSTE...). On les réaligne ici.
+// Ajoute une ligne ici si tu repères un autre hippodrome dans le même cas.
+const HIPPO_RENAME = {
+  'La Cepiere': 'Toulouse'
+};
+function resolveHippoName(raw){
+  const tc = titleCase(raw);
+  return HIPPO_RENAME[tc] || tc;
+}
+
 let finalResult = { att: {}, mon: {} };
 let fileLabel = '';
 
@@ -184,7 +196,7 @@ async function scrapeOneDay(pmuDate, dateFR){
         if(!p.reductionKilometrique) return;
         const rk = Math.round((p.reductionKilometrique/1000)*10)/10;
         const age = p.age != null ? (p.age >= 5 ? '5+' : String(p.age)) : null;
-        const hippo = titleCase(c.hippo);
+        const hippo = resolveHippoName(c.hippo);
         const key = [hippo, c.dist, c.mode, age, c.alloc].join('|');
         if(!finalResult[c.disc][key]){
           finalResult[c.disc][key] = {
