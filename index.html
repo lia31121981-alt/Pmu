@@ -58,6 +58,27 @@ input[type="date"]{background:var(--bg);border:1px solid var(--bor);border-radiu
       </div>
       <button class="btn" id="fetchBtn" onclick="startScrape()">▶ RÉCUPÉRER</button>
     </div>
+
+    <div style="margin-top:0.8rem;padding-top:0.7rem;border-top:1px solid var(--bor)">
+      <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer">
+        <input type="checkbox" id="filterActive" style="width:auto">
+        <span>Filtre "méthode article" : ne garder que les chevaux d'une catégorie homogène (âge minimum + gains de carrière)</span>
+      </label>
+      <div class="row" style="margin-top:0.5rem" id="filterFields">
+        <div>
+          <label>Âge minimum</label>
+          <input type="number" id="filterMinAge" value="5" min="2" max="15" style="width:100%">
+        </div>
+        <div>
+          <label>Gains carrière min (€)</label>
+          <input type="number" id="filterMinGains" value="30490" min="0" step="1000" style="width:100%">
+        </div>
+        <div>
+          <label>Gains carrière max (€)</label>
+          <input type="number" id="filterMaxGains" value="76224" min="0" step="1000" style="width:100%">
+        </div>
+      </div>
+    </div>
     <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
     <div id="progress"></div>
     <div class="stats" id="stats"></div>
@@ -125,7 +146,7 @@ function resolveHippoName(raw){
   if(!raw) return null;
   if(/vincenn/i.test(raw)) return 'Vincennes';
   if(/enghien|soisy/i.test(raw)) return 'Enghien Soisy';
-  if(/marseille.*borel/i.test(raw)) return 'Marseille Borely';
+  if(/marseille.*borel|^borely?\b/i.test(raw)) return 'Marseille Borely';
   if(/marseille.*vivaux/i.test(raw)) return 'Marseille Vivaux';
   if(/lyon.*soie/i.test(raw)) return 'Lyon La Soie';
   if(/lyon.*parilly/i.test(raw)) return 'Lyon Parilly';
@@ -157,6 +178,8 @@ function resolveHippoName(raw){
   if(/graignes/i.test(raw)) return 'Graignes';
   if(/\bcaen\b/i.test(raw)) return 'Caen';
   if(/toulouse|cepiere|c[eé]piere/i.test(raw)) return 'Toulouse';
+  if(/^agen\b/i.test(raw)) return 'Agen';
+  if(/royan/i.test(raw)) return 'Royan La Palmyre';
   return titleCase(raw);
 }
 
@@ -172,7 +195,7 @@ function dateStrToParts(dateStr){ // YYYY-MM-DD -> {pmuDate, dateFR}
 
 // Récupère et intègre les données d'UNE journée dans finalResult (partagé).
 // Retourne le nombre de performances ajoutées pour cette journée.
-async function scrapeOneDay(pmuDate, dateFR){
+async function scrapeOneDay(pmuDate, dateFR, filterActive, minAge, minGains, maxGains){
   const prog = await fetchJson('/rest/client/7/programme/' + pmuDate);
   const reunions = (prog.programme && prog.programme.reunions) || [];
 
@@ -227,6 +250,15 @@ async function scrapeOneDay(pmuDate, dateFR){
         if(p.statut !== 'PARTANT') return;
         if(!p.ordreArrivee || p.ordreArrivee < 1 || p.ordreArrivee > 7) return;
         if(!p.reductionKilometrique) return;
+        // Filtre "méthode article" : chevaux de 5 ans+ avec des gains de
+        // carrière dans une fourchette homogène (par défaut 30 490€-76 224€,
+        // soit 200 000-500 000 F, comme dans l'étude de référence).
+        if(filterActive){
+          if(p.age == null || p.age < minAge) return;
+          const gainsCentimes = p.gainsParticipant && p.gainsParticipant.gainsCarriere;
+          const gains = gainsCentimes != null ? gainsCentimes / 100 : null;
+          if(gains == null || gains < minGains || gains > maxGains) return;
+        }
         const rk = Math.round((p.reductionKilometrique/1000)*10)/10;
         const age = p.age != null ? (p.age >= 5 ? '5+' : String(p.age)) : null;
         const hippo = resolveHippoName(c.hippo);
@@ -275,6 +307,14 @@ async function startScrape(){
   const days = daysBetween(startStr, endStr);
   fileLabel = startStr === endStr ? startStr : (startStr + '_a_' + endStr);
 
+  const filterActive = document.getElementById('filterActive').checked;
+  const minAge = parseInt(document.getElementById('filterMinAge').value) || 5;
+  const minGains = parseFloat(document.getElementById('filterMinGains').value) || 0;
+  const maxGains = parseFloat(document.getElementById('filterMaxGains').value) || Infinity;
+  if(filterActive){
+    fileLabel += '-methode-article';
+  }
+
   // Empêche l'écran de se verrouiller automatiquement pendant la récupération
   // (si le navigateur le permet). Si l'API n'existe pas, on continue sans.
   let wakeLock = null;
@@ -292,13 +332,16 @@ async function startScrape(){
   finalResult = { att: {}, mon: {} };
 
   log(days.length > 1 ? ('Récupération de ' + days.length + ' jours (' + startStr + ' → ' + endStr + ')...') : 'Récupération du ' + days.length + ' jour...');
+  if(filterActive){
+    log('🔬 Filtre méthode article actif : chevaux ' + minAge + ' ans+ avec ' + minGains.toLocaleString('fr-FR') + '€-' + maxGains.toLocaleString('fr-FR') + '€ de gains carrière.');
+  }
 
   let totalAdded = 0, totalSkipped = 0;
   for(let i = 0; i < days.length; i++){
     const { pmuDate, dateFR } = dateStrToParts(days[i]);
     setProgress(Math.round((i/days.length)*100));
     try {
-      const res = await scrapeOneDay(pmuDate, dateFR);
+      const res = await scrapeOneDay(pmuDate, dateFR, filterActive, minAge, minGains, maxGains);
       totalAdded += res.coursesAdded;
       totalSkipped += res.racesSkipped;
       log('✓ ' + dateFR + ' — ' + res.nbCourses + ' courses trot, ' + res.coursesAdded + ' performances ajoutées' + (res.racesSkipped ? ' (' + res.racesSkipped + ' pas encore courues)' : ''));
