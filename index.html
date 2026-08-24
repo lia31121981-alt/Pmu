@@ -41,7 +41,7 @@ input[type="date"]{background:var(--bg);border:1px solid var(--bor);border-radiu
 <body>
 <div class="wrap">
   <header>
-    <div class="eyebrow">Trot FranÃ§ais Â· Collecte Automatique</div>
+    <div class="eyebrow">Trot Français · Collecte Automatique</div>
     <h1>PMU <span>SCRAPER</span></h1>
     <div class="sub">Alimente automatiquement ta base RK depuis l'API PMU officielle</div>
   </header>
@@ -56,25 +56,30 @@ input[type="date"]{background:var(--bg);border:1px solid var(--bor);border-radiu
         <label>Au</label>
         <input type="date" id="dateEnd">
       </div>
-      <button class="btn" id="fetchBtn" onclick="startScrape()">â–¶ RÃ‰CUPÃ‰RER</button>
+      <button class="btn" id="fetchBtn" onclick="startScrape()">▶ RÉCUPÉRER</button>
     </div>
 
     <div style="margin-top:0.8rem;padding-top:0.7rem;border-top:1px solid var(--bor)">
       <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer">
         <input type="checkbox" id="filterActive" style="width:auto">
-        <span>Filtre "mÃ©thode article" : ne garder que les chevaux d'une catÃ©gorie homogÃ¨ne (Ã¢ge minimum + gains de carriÃ¨re)</span>
+        <span>Filtre "méthode article" : ne garder que les chevaux d'une catégorie homogène (âge minimum + gains de carrière)</span>
       </label>
       <div class="row" style="margin-top:0.5rem" id="filterFields">
         <div>
-          <label>Ã‚ge minimum</label>
-          <input type="number" id="filterMinAge" value="5" min="2" max="15" style="width:100%">
+          <label>Âge</label>
+          <select id="filterAge" style="width:100%">
+            <option value="3">3 ans (uniquement)</option>
+            <option value="4">4 ans (uniquement)</option>
+            <option value="5" selected>5 ans (uniquement)</option>
+            <option value="6">6 ans et plus (6, 7, 8, 9, 10, 11...)</option>
+          </select>
         </div>
         <div>
-          <label>Gains carriÃ¨re min (â‚¬)</label>
+          <label>Gains carrière min (€)</label>
           <input type="number" id="filterMinGains" value="30490" min="0" step="1000" style="width:100%">
         </div>
         <div>
-          <label>Gains carriÃ¨re max (â‚¬)</label>
+          <label>Gains carrière max (€)</label>
           <input type="number" id="filterMaxGains" value="76224" min="0" step="1000" style="width:100%">
         </div>
       </div>
@@ -83,12 +88,12 @@ input[type="date"]{background:var(--bg);border:1px solid var(--bor);border-radiu
     <div id="progress"></div>
     <div class="stats" id="stats"></div>
     <div class="actions" id="actions" style="display:none">
-      <button class="btn-secondary" style="color:var(--grn);border-color:rgba(0,232,122,0.4)" onclick="downloadResult()">â¬‡ï¸ TÃ‰LÃ‰CHARGER (compatible IMPORTER)</button>
+      <button class="btn-secondary" style="color:var(--grn);border-color:rgba(0,232,122,0.4)" onclick="downloadResult()">⬇️ TÉLÉCHARGER (compatible IMPORTER)</button>
     </div>
     <div class="note">
-      Astuce : mets la mÃªme date des deux cÃ´tÃ©s pour un seul jour, ou une plage large pour rattraper plusieurs semaines/mois d'un coup. Sur une grosse plage, Ã§a peut prendre plusieurs minutes â€” ne quitte pas la page pendant que Ã§a tourne.<br><br>
-      Passe par une fonction serveur hÃ©bergÃ©e sur ton propre Vercel (<code>/api/pmu-proxy</code>) pour contourner le blocage CORS du navigateur â€” l'API PMU elle-mÃªme est publique et sans authentification. Plus de dÃ©pendance Ã  un proxy tiers.<br><br>
-      Une fois le fichier tÃ©lÃ©chargÃ©, utilise le bouton <strong>â¬†ï¸ IMPORTER</strong> dans PCM-PRO-YAMCHA-ANALYSTE pour l'ajouter Ã  ta base â€” il fusionnera automatiquement avec ce que tu as dÃ©jÃ , sans doublons.
+      Astuce : mets la même date des deux côtés pour un seul jour, ou une plage large pour rattraper plusieurs semaines/mois d'un coup. Sur une grosse plage, ça peut prendre plusieurs minutes — ne quitte pas la page pendant que ça tourne.<br><br>
+      Passe par une fonction serveur hébergée sur ton propre Vercel (<code>/api/pmu-proxy</code>) pour contourner le blocage CORS du navigateur — l'API PMU elle-même est publique et sans authentification. Plus de dépendance à un proxy tiers.<br><br>
+      Une fois le fichier téléchargé, utilise le bouton <strong>⬆️ IMPORTER</strong> dans PCM-PRO-YAMCHA-ANALYSTE pour l'ajouter à ta base — il fusionnera automatiquement avec ce que tu as déjà, sans doublons.
     </div>
   </div>
 </div>
@@ -97,9 +102,9 @@ input[type="date"]{background:var(--bg);border:1px solid var(--bor);border-radiu
 document.getElementById('dateStart').valueAsDate = new Date();
 document.getElementById('dateEnd').valueAsDate = new Date();
 
-// Passe par notre propre fonction serveur Vercel (/api/pmu-proxy) plutÃ´t que
-// par un proxy CORS public tiers (peu fiable, souvent limitÃ© aux domaines
-// de dÃ©veloppement). "path" doit commencer par /rest/client/7/programme/...
+// Passe par notre propre fonction serveur Vercel (/api/pmu-proxy) plutôt que
+// par un proxy CORS public tiers (peu fiable, souvent limité aux domaines
+// de développement). "path" doit commencer par /rest/client/7/programme/...
 async function fetchJson(pmuPath){
   const res = await fetch('/api/pmu-proxy?path=' + encodeURIComponent(pmuPath));
   if(!res.ok){
@@ -122,26 +127,26 @@ function setProgress(pct){
   document.getElementById('progressFill').style.width = pct + '%';
 }
 
-// ===== Mapping PMU -> format RK base (identique Ã  PCM-PRO-YAMCHA-ANALYSTE) =====
+// ===== Mapping PMU -> format RK base (identique à PCM-PRO-YAMCHA-ANALYSTE) =====
 function mapFerrure(deferre){
-  if(!deferre) return 'FERRÃ‰';
+  if(!deferre) return 'FERRÉ';
   if(deferre.includes('ANTERIEURS_POSTERIEURS')) return 'D4';
   if(deferre.includes('POSTERIEURS')) return 'DP';
   if(deferre.includes('ANTERIEURS')) return 'DA';
   if(deferre.includes('PROTEGE')) return 'DA/PP';
-  return 'FERRÃ‰';
+  return 'FERRÉ';
 }
 function titleCase(s){
   return s.toLowerCase().replace(/(^|[\s\-'])(\S)/g, (m,sep,c)=>sep+c.toUpperCase());
 }
 function pad2(n){ return String(n).padStart(2,'0'); }
 
-// Normalisation d'hippodrome IDENTIQUE Ã  celle utilisÃ©e dans
+// Normalisation d'hippodrome IDENTIQUE à celle utilisée dans
 // PCM-PRO-YAMCHA-ANALYSTE (normHippoRKA) pour le calcul PCM. Si les deux
 // ne correspondent pas mot pour mot, les courses deviennent invisibles
-// pour le calcul mÃªme si elles existent bien dans la base (bug vÃ©cu avec
-// Enghien, Cagnes Sur Mer, Lyon Parilly, etc. â€” jamais retrouvÃ©es par le
-// moteur de calcul car stockÃ©es sous un nom lÃ©gÃ¨rement diffÃ©rent).
+// pour le calcul même si elles existent bien dans la base (bug vécu avec
+// Enghien, Cagnes Sur Mer, Lyon Parilly, etc. — jamais retrouvées par le
+// moteur de calcul car stockées sous un nom légèrement différent).
 function resolveHippoName(raw){
   if(!raw) return null;
   if(/vincenn/i.test(raw)) return 'Vincennes';
@@ -152,7 +157,7 @@ function resolveHippoName(raw){
   if(/lyon.*parilly/i.test(raw)) return 'Lyon Parilly';
   if(/beaumont/i.test(raw)) return 'Beaumont De Lomagne';
   if(/castera/i.test(raw)) return 'Castera Verduzan';
-  if(/croise.*laroche|croisÃ©.*laroche/i.test(raw)) return 'Le Croise Laroche';
+  if(/croise.*laroche|croisé.*laroche/i.test(raw)) return 'Le Croise Laroche';
   if(/mont.*michel/i.test(raw)) return 'Le Mont Saint Michel';
   if(/sables.*olonne/i.test(raw)) return "Les Sables D'Olonne";
   if(/saint.*brieuc/i.test(raw)) return 'Saint Brieuc';
@@ -177,7 +182,7 @@ function resolveHippoName(raw){
   if(/machecoul/i.test(raw)) return 'Machecoul';
   if(/graignes/i.test(raw)) return 'Graignes';
   if(/\bcaen\b/i.test(raw)) return 'Caen';
-  if(/toulouse|cepiere|c[eÃ©]piere/i.test(raw)) return 'Toulouse';
+  if(/toulouse|cepiere|c[eé]piere/i.test(raw)) return 'Toulouse';
   if(/^agen\b/i.test(raw)) return 'Agen';
   if(/royan/i.test(raw)) return 'Royan La Palmyre';
   return titleCase(raw);
@@ -193,24 +198,24 @@ function dateStrToParts(dateStr){ // YYYY-MM-DD -> {pmuDate, dateFR}
   return { pmuDate: d + m + y, dateFR: d + '/' + m + '/' + y };
 }
 
-// RÃ©cupÃ¨re et intÃ¨gre les donnÃ©es d'UNE journÃ©e dans finalResult (partagÃ©).
-// Retourne le nombre de performances ajoutÃ©es pour cette journÃ©e.
-async function scrapeOneDay(pmuDate, dateFR, filterActive, minAge, minGains, maxGains){
+// Récupère et intègre les données d'UNE journée dans finalResult (partagé).
+// Retourne le nombre de performances ajoutées pour cette journée.
+async function scrapeOneDay(pmuDate, dateFR, filterActive, ageFiltre, minGains, maxGains){
   const prog = await fetchJson('/rest/client/7/programme/' + pmuDate);
   const reunions = (prog.programme && prog.programme.reunions) || [];
 
-  // Diagnostic : lister toutes les rÃ©unions du jour (utile pour debug)
-  log('  RÃ©unions du ' + dateFR + ' : ' + reunions.map(r => 'R'+r.numOfficiel+' '+(r.hippodrome?r.hippodrome.libelleCourt:'?')).join(' Â· '));
+  // Diagnostic : lister toutes les réunions du jour (utile pour debug)
+  log('  Réunions du ' + dateFR + ' : ' + reunions.map(r => 'R'+r.numOfficiel+' '+(r.hippodrome?r.hippodrome.libelleCourt:'?')).join(' · '));
 
   const trotCourses = [];
   reunions.forEach(reu => {
     const hippo = reu.hippodrome.libelleCourt;
-    // Diagnostic ciblÃ© : si l'hippodrome contient "toulouse", on affiche le
-    // dÃ©tail brut de chaque course pour voir exactement ce que PMU renvoie
-    // (discipline, statut) mÃªme si elle n'est pas retenue comme trot.
+    // Diagnostic ciblé : si l'hippodrome contient "toulouse", on affiche le
+    // détail brut de chaque course pour voir exactement ce que PMU renvoie
+    // (discipline, statut) même si elle n'est pas retenue comme trot.
     if(/toulouse/i.test(hippo)){
       (reu.courses||[]).forEach(c => {
-        log('  ðŸ” ' + hippo + ' R'+reu.numOfficiel+'C'+c.numOrdre + ' â€” discipline=' + c.discipline + ' statut=' + c.statut + ' categorieParticularite=' + c.categorieParticularite);
+        log('  🔍 ' + hippo + ' R'+reu.numOfficiel+'C'+c.numOrdre + ' — discipline=' + c.discipline + ' statut=' + c.statut + ' categorieParticularite=' + c.categorieParticularite);
       });
     }
     (reu.courses||[]).forEach(c => {
@@ -235,11 +240,11 @@ async function scrapeOneDay(pmuDate, dateFR, filterActive, minAge, minGains, max
 
       // On ne se fie plus au champ "statut" de la course (formulations
       // multiples selon les hippodromes/allocations, qui faisaient ignorer
-      // Ã  tort des courses pourtant bien terminÃ©es). On regarde directement
-      // si des arrivÃ©es existent rÃ©ellement dans les participants.
+      // à tort des courses pourtant bien terminées). On regarde directement
+      // si des arrivées existent réellement dans les participants.
       const hasArrivals = participants.some(p => p.ordreArrivee && p.reductionKilometrique);
       if(/toulouse/i.test(c.hippo)){
-        log('  ðŸ” Participants ' + c.hippo + ' R'+c.numReunion+'C'+c.numCourse + ' : ' + participants.length + ' chevaux, hasArrivals=' + hasArrivals + (participants[0] ? (' Â· ex: statut='+participants[0].statut+' ordreArrivee='+participants[0].ordreArrivee+' RK='+participants[0].reductionKilometrique) : ''));
+        log('  🔍 Participants ' + c.hippo + ' R'+c.numReunion+'C'+c.numCourse + ' : ' + participants.length + ' chevaux, hasArrivals=' + hasArrivals + (participants[0] ? (' · ex: statut='+participants[0].statut+' ordreArrivee='+participants[0].ordreArrivee+' RK='+participants[0].reductionKilometrique) : ''));
       }
       if(!hasArrivals){
         racesSkipped++;
@@ -250,26 +255,40 @@ async function scrapeOneDay(pmuDate, dateFR, filterActive, minAge, minGains, max
         if(p.statut !== 'PARTANT') return;
         if(!p.ordreArrivee || p.ordreArrivee < 1 || p.ordreArrivee > 7) return;
         if(!p.reductionKilometrique) return;
-        // Filtre "mÃ©thode article" : chevaux de 5 ans+ avec des gains de
-        // carriÃ¨re dans une fourchette homogÃ¨ne (par dÃ©faut 30 490â‚¬-76 224â‚¬,
-        // soit 200 000-500 000 F, comme dans l'Ã©tude de rÃ©fÃ©rence).
+        // Filtre "méthode article" : chevaux de 5 ans+ avec des gains de
+        // carrière dans une fourchette homogène (par défaut 30 490€-76 224€,
+        // soit 200 000-500 000 F, comme dans l'étude de référence).
         if(filterActive){
-          if(p.age == null || p.age < minAge) return;
+          // Âge indiqué = le SEUL âge scrapé, sauf à partir de 6 ans où on
+          // regroupe automatiquement 6, 7, 8, 9, 10, 11 ans et plus ensemble.
+          if(p.age == null) return;
+          if(ageFiltre < 6){
+            if(p.age !== ageFiltre) return;
+          } else {
+            if(p.age < 6) return;
+          }
           const gainsCentimes = p.gainsParticipant && p.gainsParticipant.gainsCarriere;
           const gains = gainsCentimes != null ? gainsCentimes / 100 : null;
           if(gains == null || gains < minGains || gains > maxGains) return;
         }
         const rk = Math.round((p.reductionKilometrique/1000)*10)/10;
-        const age = p.age != null ? (p.age >= 5 ? '5+' : String(p.age)) : null;
+        const age = p.age != null ? (p.age >= 6 ? '6+' : String(p.age)) : null;
         const hippo = resolveHippoName(c.hippo);
-        const key = [hippo, c.dist, c.mode, age, c.alloc].join('|');
+        // Avec le filtre méthode article actif, l'échantillon est déjà
+        // homogène (5 ans+, gains dans une fourchette précise) — inutile de
+        // re-fragmenter par tranche d'allocation ou par âge en plus : un
+        // seul groupe par parcours (hippo+distance+mode) suffit, comme
+        // dans l'article original.
+        const groupAge = filterActive ? null : age;
+        const groupAlloc = filterActive ? null : c.alloc;
+        const key = [hippo, c.dist, c.mode, groupAge, groupAlloc].join('|');
         if(!finalResult[c.disc][key]){
           finalResult[c.disc][key] = {
-            hippo, dist: c.dist, mode: c.mode, age, alloc: c.alloc, disc: c.disc,
+            hippo, dist: c.dist, mode: c.mode, age: groupAge, alloc: groupAlloc, disc: c.disc,
             courses: [], tranches: [], moyenne: null
           };
         }
-        // Anti-doublon : mÃªme cheval, mÃªme date dÃ©jÃ  prÃ©sent dans ce groupe
+        // Anti-doublon : même cheval, même date déjà présent dans ce groupe
         const dup = finalResult[c.disc][key].courses.some(x => x.date===dateFR && x.cheval===titleCase(p.nom));
         if(!dup){
           finalResult[c.disc][key].courses.push({
@@ -279,9 +298,9 @@ async function scrapeOneDay(pmuDate, dateFR, filterActive, minAge, minGains, max
           coursesAdded++;
         }
       });
-      await sleep(120); // mÃ©nage l'API PMU sur les grosses plages de dates
+      await sleep(120); // ménage l'API PMU sur les grosses plages de dates
     } catch(e){
-      log('âš ï¸ Ã‰chec R' + c.numReunion + 'C' + c.numCourse + ' (' + c.hippo + ', ' + dateFR + ') : ' + e.message);
+      log('⚠️ Échec R' + c.numReunion + 'C' + c.numCourse + ' (' + c.hippo + ', ' + dateFR + ') : ' + e.message);
     }
   }
   return { coursesAdded, racesSkipped, nbCourses: trotCourses.length };
@@ -302,28 +321,28 @@ async function startScrape(){
   const startStr = document.getElementById('dateStart').value;
   const endStr = document.getElementById('dateEnd').value;
   if(!startStr || !endStr){ alert('Choisis les deux dates.'); return; }
-  if(startStr > endStr){ alert('La date de dÃ©but doit Ãªtre avant la date de fin.'); return; }
+  if(startStr > endStr){ alert('La date de début doit être avant la date de fin.'); return; }
 
   const days = daysBetween(startStr, endStr);
   fileLabel = startStr === endStr ? startStr : (startStr + '_a_' + endStr);
 
   const filterActive = document.getElementById('filterActive').checked;
-  const minAge = parseInt(document.getElementById('filterMinAge').value) || 5;
+  const ageFiltre = parseInt(document.getElementById('filterAge').value) || 5;
   const minGains = parseFloat(document.getElementById('filterMinGains').value) || 0;
   const maxGains = parseFloat(document.getElementById('filterMaxGains').value) || Infinity;
   if(filterActive){
     fileLabel += '-methode-article';
   }
 
-  // EmpÃªche l'Ã©cran de se verrouiller automatiquement pendant la rÃ©cupÃ©ration
+  // Empêche l'écran de se verrouiller automatiquement pendant la récupération
   // (si le navigateur le permet). Si l'API n'existe pas, on continue sans.
   let wakeLock = null;
   try {
     if('wakeLock' in navigator){
       wakeLock = await navigator.wakeLock.request('screen');
-      log('ðŸ”“ Ã‰cran maintenu allumÃ© pendant la rÃ©cupÃ©ration.');
+      log('🔓 Écran maintenu allumé pendant la récupération.');
     }
-  } catch(e) { /* refusÃ© ou indisponible, tant pis, on continue quand mÃªme */ }
+  } catch(e) { /* refusé ou indisponible, tant pis, on continue quand même */ }
 
   document.getElementById('fetchBtn').disabled = true;
   document.getElementById('progress').textContent = '';
@@ -331,9 +350,9 @@ async function startScrape(){
   document.getElementById('actions').style.display = 'none';
   finalResult = { att: {}, mon: {} };
 
-  log(days.length > 1 ? ('RÃ©cupÃ©ration de ' + days.length + ' jours (' + startStr + ' â†’ ' + endStr + ')...') : 'RÃ©cupÃ©ration du ' + days.length + ' jour...');
+  log(days.length > 1 ? ('Récupération de ' + days.length + ' jours (' + startStr + ' → ' + endStr + ')...') : 'Récupération du ' + days.length + ' jour...');
   if(filterActive){
-    log('ðŸ”¬ Filtre mÃ©thode article actif : chevaux ' + minAge + ' ans+ avec ' + minGains.toLocaleString('fr-FR') + 'â‚¬-' + maxGains.toLocaleString('fr-FR') + 'â‚¬ de gains carriÃ¨re.');
+    log('🔬 Filtre méthode article actif : chevaux ' + (ageFiltre < 6 ? (ageFiltre + ' ans uniquement') : '6 ans et plus') + ' avec ' + minGains.toLocaleString('fr-FR') + '€-' + maxGains.toLocaleString('fr-FR') + '€ de gains carrière.');
   }
 
   let totalAdded = 0, totalSkipped = 0;
@@ -341,29 +360,29 @@ async function startScrape(){
     const { pmuDate, dateFR } = dateStrToParts(days[i]);
     setProgress(Math.round((i/days.length)*100));
     try {
-      const res = await scrapeOneDay(pmuDate, dateFR, filterActive, minAge, minGains, maxGains);
+      const res = await scrapeOneDay(pmuDate, dateFR, filterActive, ageFiltre, minGains, maxGains);
       totalAdded += res.coursesAdded;
       totalSkipped += res.racesSkipped;
-      log('âœ“ ' + dateFR + ' â€” ' + res.nbCourses + ' courses trot, ' + res.coursesAdded + ' performances ajoutÃ©es' + (res.racesSkipped ? ' (' + res.racesSkipped + ' pas encore courues)' : ''));
+      log('✓ ' + dateFR + ' — ' + res.nbCourses + ' courses trot, ' + res.coursesAdded + ' performances ajoutées' + (res.racesSkipped ? ' (' + res.racesSkipped + ' pas encore courues)' : ''));
     } catch(e){
-      log('âŒ ' + dateFR + ' â€” erreur : ' + e.message);
+      log('❌ ' + dateFR + ' — erreur : ' + e.message);
     }
-    // Sauvegarde intermÃ©diaire tous les 30 jours traitÃ©s, pour ne rien perdre
-    // si le tÃ©lÃ©phone met la page en veille ou si la connexion coupe en cours de route.
+    // Sauvegarde intermédiaire tous les 30 jours traités, pour ne rien perdre
+    // si le téléphone met la page en veille ou si la connexion coupe en cours de route.
     if((i+1) % 30 === 0 && i < days.length - 1){
-      log('ðŸ’¾ Sauvegarde intermÃ©diaire (' + (i+1) + '/' + days.length + ' jours traitÃ©s)...');
+      log('💾 Sauvegarde intermédiaire (' + (i+1) + '/' + days.length + ' jours traités)...');
       downloadResult(true);
     }
   }
   if(wakeLock){ try { await wakeLock.release(); } catch(e){} }
   setProgress(100);
-  log('â€” TerminÃ© â€”');
+  log('— Terminé —');
 
   const nbAtt = Object.keys(finalResult.att).length;
   const nbMon = Object.keys(finalResult.mon).length;
   document.getElementById('stats').innerHTML = `
-    <div class="stat-pill">Groupes AttelÃ© <strong>${nbAtt}</strong></div>
-    <div class="stat-pill">Groupes MontÃ© <strong>${nbMon}</strong></div>
+    <div class="stat-pill">Groupes Attelé <strong>${nbAtt}</strong></div>
+    <div class="stat-pill">Groupes Monté <strong>${nbMon}</strong></div>
     <div class="stat-pill">Performances <strong>${totalAdded}</strong></div>
   `;
   if(totalAdded > 0) document.getElementById('actions').style.display = 'flex';
